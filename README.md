@@ -72,7 +72,7 @@ ASCEND is under active development. Features, functionality, and documentation w
 
 **Prabhu Teja**
 
-GitHub: [baiganiprab huteja7](https://github.com/baiganiprab huteja7)
+GitHub: [baiganiprabhuteja7](https://github.com/baiganiprab huteja7)
 
 ---
 
