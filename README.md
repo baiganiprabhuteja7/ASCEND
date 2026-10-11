@@ -77,3 +77,46 @@ GitHub: [baiganiprabhuteja7](https://github.com/baiganiprabhuteja7)
 ---
 
 *Building technology that supports continuous growth and meaningful progress.*
+
+## 🛠️ Tech Stack
+
+- **Frontend:** React
+- **Backend:** Python, FastAPI
+- **Database:** SQLite
+
+## ✨ Key Features
+
+- Personal goal setting and management
+- Structured action planning
+- Task and progress tracking
+- Frontend and backend integration
+- Database-backed application functionality
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Git
+- Python
+- Node.js and npm
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/baiganiprabhuteja7/ASCEND.git
+cd ASCEND
+```
+
+### Run the Application
+
+Refer to the `frontend` and `backend` folders for their respective setup instructions. Install the required dependencies and configure environment variables before starting the application.
+
+## 🎯 Project Goal
+
+ASCEND aims to help people turn personal development goals into consistent actions and measurable progress.
+
+## 👨‍💻 Developer
+
+**Prabhu Teja**
+
+GitHub: [baiganiprabhuteja7](https://github.com/baiganiprabhuteja7)
