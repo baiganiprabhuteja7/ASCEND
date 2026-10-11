@@ -5,22 +5,25 @@ ASCEND is a personal growth and development platform designed to help individual
 
 ## 📌 About the Project
 
-ASCEND aims to bridge the gap between personal development and real-world impact. It focuses on helping individuals grow continuously, develop useful skills, and make progress toward their goals.
+ASCEND aims to bridge the gap between personal development and real-world impact. It focuses on helping individuals grow continuously, develop useful skills, and make consistent progress toward their goals.
 
-This project is being developed with a modular architecture, separating the frontend and backend for better organization and maintainability.
+The project follows a modular architecture, separating the frontend and backend for better organization and maintainability.
 
 ## ✨ Key Highlights
 
+- Personal growth and continuous learning
 - Organized frontend and backend architecture
-- Focus on personal growth and continuous learning
-- Designed with scalability and future improvements in mind
-- Built as an ongoing software development project
+- Goal-oriented development approach
+- Designed with future improvements in mind
+- Ongoing software development project
 
 ## 🛠️ Tech Stack
 
 - **Frontend:** HTML, CSS, JavaScript
 - **Backend:** Python
 - **Version Control:** Git and GitHub
+
+> Update this section if your actual implementation uses additional frameworks, databases, or technologies.
 
 ## 📂 Project Structure
 
@@ -43,7 +46,7 @@ ASCEND/
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/baiganiprab huteja7/ASCEND.git
+   git clone https://github.com/baiganiprabhuteja7/ASCEND.git
    ```
 
 2. Navigate to the project directory:
@@ -54,7 +57,11 @@ ASCEND/
 
 3. Explore the `frontend` and `backend` directories.
 
-4. Follow the setup instructions and dependencies required by each component to run the application.
+4. Follow the setup instructions and install the dependencies required by each component.
+
+### Running the Application
+
+Refer to the frontend and backend setup instructions to start the application. Add the exact commands here once the project setup has been verified.
 
 ## 🚧 Project Status
 
@@ -66,7 +73,7 @@ ASCEND is under active development. Features, functionality, and documentation w
 - Expand personal development features
 - Improve backend functionality
 - Add testing and error handling
-- Improve documentation and deployment
+- Improve deployment and documentation
 
 ## 👨‍💻 Author
 
@@ -77,46 +84,3 @@ GitHub: [baiganiprabhuteja7](https://github.com/baiganiprabhuteja7)
 ---
 
 *Building technology that supports continuous growth and meaningful progress.*
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React
-- **Backend:** Python, FastAPI
-- **Database:** SQLite
-
-## ✨ Key Features
-
-- Personal goal setting and management
-- Structured action planning
-- Task and progress tracking
-- Frontend and backend integration
-- Database-backed application functionality
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Git
-- Python
-- Node.js and npm
-
-### Clone the Repository
-
-```bash
-git clone https://github.com/baiganiprabhuteja7/ASCEND.git
-cd ASCEND
-```
-
-### Run the Application
-
-Refer to the `frontend` and `backend` folders for their respective setup instructions. Install the required dependencies and configure environment variables before starting the application.
-
-## 🎯 Project Goal
-
-ASCEND aims to help people turn personal development goals into consistent actions and measurable progress.
-
-## 👨‍💻 Developer
-
-**Prabhu Teja**
-
-GitHub: [baiganiprabhuteja7](https://github.com/baiganiprabhuteja7)
