@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { PageHeading } from '../components/PageHeading.jsx'
 import { TaskRow } from '../components/TaskRow.jsx'
 import { Icon } from '../components/Icon.jsx'
-import { createTask, generateGoalPlan, getGoalPlan, getGoals, updateTask } from '../services/api.js'
+import { createTask, deleteTask, generateGoalPlan, getGoalPlan, getGoals, updateTask } from '../services/api.js'
 
 function dateLabel(value) {
   if (!value) return 'No date'
@@ -37,6 +37,7 @@ export function ActionPlanPage({ onNavigate }) {
   const [generationError, setGenerationError] = useState('')
   const [failedGenerationGoalId, setFailedGenerationGoalId] = useState(null)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
+  const [deletingTaskId, setDeletingTaskId] = useState(null)
   const [generatingGoalId, setGeneratingGoalId] = useState(null)
   const [addingTaskGoalId, setAddingTaskGoalId] = useState(null)
   const [savingTaskGoalId, setSavingTaskGoalId] = useState(null)
@@ -80,7 +81,7 @@ export function ActionPlanPage({ onNavigate }) {
   }
 
   async function generatePlan(goalId) {
-    if (generatingGoalId || updatingTaskId || savingTaskGoalId) return
+    if (generatingGoalId || updatingTaskId || deletingTaskId || savingTaskGoalId) return
     const plan = plansByGoal[goalId]
     const hasExistingActions = allGoalTasks(plan).length > 0
     const hasExistingPlan = Boolean(plan?.source || plan?.milestones?.length)
@@ -104,23 +105,65 @@ export function ActionPlanPage({ onNavigate }) {
 
   async function toggleTask(taskId) {
     const task = Object.values(plansByGoal).flatMap(allGoalTasks).find((item) => item.id === taskId)
-    if (!task || updatingTaskId || generatingGoalId) return
+    if (!task || updatingTaskId || deletingTaskId || generatingGoalId) return
 
     setUpdatingTaskId(taskId)
     setError('')
+    let wasUpdated = false
     try {
       await updateTask(taskId, { completed: !task.completed })
+      wasUpdated = true
       await loadPlan()
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not save this task update.')
+      const detail = requestError instanceof Error ? requestError.message : 'Please reload the action plan.'
+      setError(wasUpdated
+        ? `The task was updated, but refreshing the action plan failed: ${detail}`
+        : detail)
     } finally {
       setUpdatingTaskId(null)
     }
   }
 
+  async function editTask(taskId, changes) {
+    setError('')
+    let wasUpdated = false
+    try {
+      await updateTask(taskId, changes)
+      wasUpdated = true
+      await loadPlan()
+      return true
+    } catch (requestError) {
+      const detail = requestError instanceof Error ? requestError.message : 'Please reload the action plan.'
+      setError(wasUpdated
+        ? `The task was updated, but refreshing the action plan failed: ${detail}`
+        : detail)
+      return false
+    }
+  }
+
+  async function removeTask(taskId, title) {
+    if (deletingTaskId || updatingTaskId || generatingGoalId) return
+    if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return
+    setError('')
+    setDeletingTaskId(taskId)
+    let wasDeleted = false
+    try {
+      await deleteTask(taskId)
+      wasDeleted = true
+      await loadPlan()
+    } catch (requestError) {
+      const detail = requestError instanceof Error ? requestError.message : 'Please reload the action plan.'
+      setError(wasDeleted
+        ? `The task was deleted, but refreshing the action plan failed: ${detail}`
+        : detail)
+    } finally {
+      setDeletingTaskId(null)
+    }
+  }
+
   async function addTask(event, goalId) {
     event.preventDefault()
-    if (generatingGoalId) return
+    if (generatingGoalId || deletingTaskId) return
     const form = event.currentTarget
     if (!form.reportValidity()) return
     const formData = new FormData(form)
@@ -240,7 +283,9 @@ export function ActionPlanPage({ onNavigate }) {
                             task={task}
                             goalTitle={goal.title}
                             onToggle={toggleTask}
-                            disabled={updatingTaskId === task.id || Boolean(generatingGoalId)}
+                            onEdit={editTask}
+                            onDelete={removeTask}
+                            disabled={Boolean(updatingTaskId || generatingGoalId || deletingTaskId)}
                           />
                         ))}
                       </div>
@@ -253,7 +298,7 @@ export function ActionPlanPage({ onNavigate }) {
                     <div className="milestone-content">
                       <div className="milestone-title-row"><h3>Other actions</h3><span>{plan.unassigned_tasks.filter((task) => task.completed).length}/{plan.unassigned_tasks.length}</span></div>
                       {plan.unassigned_tasks.map((task) => (
-                        <TaskRow key={task.id} task={{ ...task, done: task.completed }} goalTitle={goal.title} onToggle={toggleTask} disabled={updatingTaskId === task.id || Boolean(generatingGoalId)} />
+                        <TaskRow key={task.id} task={{ ...task, done: task.completed }} goalTitle={goal.title} onToggle={toggleTask} onEdit={editTask} onDelete={removeTask} disabled={Boolean(updatingTaskId || generatingGoalId || deletingTaskId)} />
                       ))}
                     </div>
                   </div>

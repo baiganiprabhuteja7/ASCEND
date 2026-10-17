@@ -7,12 +7,19 @@ const benefits = [
   { icon: 'heart', title: 'See your impact grow', copy: 'Track your learning and the good you are working toward.' },
 ]
 
-export function LandingPage({ onNavigate }) {
+export function LandingPage({ onNavigate, isAuthenticated }) {
   return (
     <div className="landing">
       <header className="landing-header">
         <Brand onNavigate={onNavigate} />
-        <button className="button button-quiet" onClick={() => onNavigate('/dashboard')}>Open workspace <Icon name="arrow" size={16} /></button>
+        {isAuthenticated ? (
+          <button className="button button-quiet" onClick={() => onNavigate('/dashboard')}>Open workspace <Icon name="arrow" size={16} /></button>
+        ) : (
+          <div className="landing-auth-actions">
+            <button className="button button-quiet" onClick={() => onNavigate('/login')}>Log in</button>
+            <button className="button button-primary" onClick={() => onNavigate('/signup')}>Sign up <Icon name="arrow" size={15} /></button>
+          </div>
+        )}
       </header>
       <main>
         <section className="landing-hero">
@@ -21,7 +28,7 @@ export function LandingPage({ onNavigate }) {
             <div className="hero-kicker"><span className="kicker-dot" /> YOUR NEXT CHAPTER STARTS HERE</div>
             <h1>Turn goals<br />into <span>growth.</span></h1>
             <p>Build meaningful skills, take thoughtful action, and make a difference on your own terms.</p>
-            <button className="button button-primary button-large" onClick={() => onNavigate('/dashboard')}>Get started <Icon name="arrow" size={17} /></button>
+            <button className="button button-primary button-large" onClick={() => onNavigate(isAuthenticated ? '/dashboard' : '/signup')}>{isAuthenticated ? 'Open workspace' : 'Get started'} <Icon name="arrow" size={17} /></button>
             <div className="hero-reassurance"><Icon name="check" size={15} /> A personal space to grow, at your pace</div>
           </div>
           <div className="hero-visual" aria-hidden="true">

@@ -70,7 +70,10 @@ export function DashboardPage({ onNavigate }) {
   const { goals, tasks, progress } = dashboard
   const totalTasks = progress?.total_tasks ?? tasks.length
   const completedTasks = progress?.completed_tasks ?? tasks.filter((task) => task.completed).length
+  const pendingTasks = progress?.pending_tasks ?? Math.max(0, totalTasks - completedTasks)
   const completion = progress?.completion_percentage ?? 0
+  const completedGoals = progress?.completed_goals ?? 0
+  const inProgressGoals = progress?.in_progress_goals ?? 0
   const upcoming = tasks.filter((task) => !task.completed).slice(0, 4)
 
   return (
@@ -88,7 +91,10 @@ export function DashboardPage({ onNavigate }) {
         <>
           <div className="stat-grid">
             <article className="stat-card"><div className="stat-top"><span className="stat-label">GOALS SET</span><span className="stat-icon icon-purple"><Icon name="target" size={17} /></span></div><div className="stat-number">{goals.length.toString().padStart(2, '0')}</div><div className="stat-caption">Your saved directions</div></article>
+            <article className="stat-card"><div className="stat-top"><span className="stat-label">GOALS COMPLETED</span><span className="stat-icon icon-green"><Icon name="check" size={17} /></span></div><div className="stat-number">{completedGoals.toString().padStart(2, '0')}</div><div className="stat-caption">Marked complete by you</div></article>
+            <article className="stat-card"><div className="stat-top"><span className="stat-label">IN PROGRESS</span><span className="stat-icon icon-blue"><Icon name="bolt" size={17} /></span></div><div className="stat-number">{inProgressGoals.toString().padStart(2, '0')}</div><div className="stat-caption">Goals you are working on</div></article>
             <article className="stat-card"><div className="stat-top"><span className="stat-label">ACTIONS COMPLETED</span><span className="stat-icon icon-blue"><Icon name="check" size={17} /></span></div><div className="stat-number">{completedTasks.toString().padStart(2, '0')}<span className="stat-total"> / {totalTasks.toString().padStart(2, '0')}</span></div><div className="stat-caption">Small steps add up</div></article>
+            <article className="stat-card"><div className="stat-top"><span className="stat-label">ACTIONS TO GO</span><span className="stat-icon icon-purple"><Icon name="clock" size={17} /></span></div><div className="stat-number">{pendingTasks.toString().padStart(2, '0')}</div><div className="stat-caption">Saved actions not completed</div></article>
             <article className="stat-card progress-stat"><div className="stat-top"><span className="stat-label">OVERALL PROGRESS</span><span className="stat-icon icon-green"><Icon name="bolt" size={17} /></span></div><div className="stat-progress-line"><div><div className="stat-number">{completion}<span className="stat-percent">%</span></div><div className="stat-caption">Across all your actions</div></div><ProgressRing value={completion} /></div></article>
           </div>
           <section className="dashboard-bottom">

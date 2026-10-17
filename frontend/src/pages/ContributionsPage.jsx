@@ -1,30 +1,61 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PageHeading } from '../components/PageHeading.jsx'
 import { Icon } from '../components/Icon.jsx'
+import { createContribution, getContributions } from '../services/api.js'
 
 export function ContributionsPage() {
-  const [message, setMessage] = useState('')
   const [contributions, setContributions] = useState([])
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
-  function submitContribution(event) {
+  useEffect(() => {
+    let isCurrent = true
+    getContributions()
+      .then((items) => {
+        if (isCurrent) setContributions(items)
+      })
+      .catch((requestError) => {
+        if (isCurrent) setError(requestError instanceof Error ? requestError.message : 'Could not load contributions.')
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoading(false)
+      })
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  async function submitContribution(event) {
     event.preventDefault()
     const form = event.currentTarget
     if (!form.reportValidity()) return
     const values = new FormData(form)
-    const contribution = {
-      id: crypto.randomUUID(),
+    const payload = {
       title: String(values.get('title')).trim(),
-      kind: String(values.get('kind')),
-      evidence: String(values.get('evidence')).trim(),
+      contribution_type: String(values.get('kind')),
+      evidence_url: String(values.get('evidence')).trim() || null,
     }
-    setContributions((current) => [contribution, ...current])
-    setMessage('Added to this session on this device. This demo does not submit to a backend.')
-    form.reset()
+    setIsSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const contribution = await createContribution(payload)
+      setContributions((current) => [contribution, ...current])
+      setMessage('Your contribution has been saved to your private workspace.')
+      form.reset()
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not save this contribution.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
     <>
       <PageHeading eyebrow="MAKE YOUR WORK VISIBLE" title="Contributions" description="Capture a moment when you put a skill to work for something you care about." />
+      {error && <div className="api-feedback api-feedback-error" role="alert">{error}</div>}
       <div className="contributions-layout">
         <section className="panel contribution-form-panel"><div className="form-heading"><div><span className="eyebrow">A MOMENT THAT MATTERED</span><h2>Share a contribution</h2><p>There is no minimum size for making a difference.</p></div><span className="form-heading-icon"><Icon name="heart" size={19} /></span></div>
           <form className="contribution-form" onSubmit={submitContribution}>
@@ -32,12 +63,13 @@ export function ContributionsPage() {
             <label className="field"><span>Contribution type <b>*</b></span><select name="kind" defaultValue="" required><option value="" disabled>Choose a type</option><option>Time and volunteering</option><option>Skills and expertise</option><option>Learning and sharing</option><option>Community building</option><option>Other</option></select></label>
             <label className="field"><span>Evidence link <small>Optional</small></span><input name="evidence" type="url" placeholder="https://example.com/your-work" /></label>
             {message && <div className="local-message" role="status"><Icon name="check" size={15} /> {message}</div>}
-            <div className="form-actions"><span>Only displayed here for this session.</span><button className="button button-primary" type="submit">Add contribution <Icon name="arrow" size={15} /></button></div>
+            <div className="form-actions"><span>Visible only in your private workspace.</span><button className="button button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : 'Add contribution'} {!isSaving && <Icon name="arrow" size={15} />}</button></div>
           </form>
         </section>
         <aside className="contribution-aside"><div className="aside-symbol"><Icon name="sparkles" size={22} /></div><span className="eyebrow">REMEMBER</span><h2>Impact has many shapes.</h2><p>A conversation, an hour, a new idea shared. Count what feels meaningful to you.</p><div className="aside-rule" /><span className="aside-small">Your contributions are not shared publicly.</span></aside>
       </div>
-      {contributions.length > 0 && <section className="panel contribution-history"><div className="panel-heading"><div><span className="eyebrow">THIS SESSION</span><h2>Your contributions</h2></div><span className="session-only-label">NOT SAVED</span></div>{contributions.map((item) => <article className="contribution-item" key={item.id}><span className="contribution-bullet"><Icon name="heart" size={15} /></span><div><h3>{item.title}</h3><p>{item.kind}{item.evidence && <> · <a href={item.evidence} target="_blank" rel="noreferrer">View evidence <Icon name="arrow" size={12} /></a></>}</p></div></article>)}</section>}
+      {isLoading && <section className="panel plan-empty" role="status"><h2>Loading contributions…</h2></section>}
+      {contributions.length > 0 && <section className="panel contribution-history"><div className="panel-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Your contributions</h2></div><span className="session-only-label">PRIVATE</span></div>{contributions.map((item) => <article className="contribution-item" key={item.id}><span className="contribution-bullet"><Icon name="heart" size={15} /></span><div><h3>{item.title}</h3><p>{item.contribution_type}{item.evidence_url && <> · <a href={item.evidence_url} target="_blank" rel="noreferrer">View evidence <Icon name="arrow" size={12} /></a></>}</p></div></article>)}</section>}
     </>
   )
 }

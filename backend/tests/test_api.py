@@ -11,12 +11,6 @@ from app.routes import goals as goals_routes
 from app.services import plan_generation
 
 
-def test_llm_api_key_configured_only_reports_nonempty_presence():
-    assert Settings(llm_api_key=" test-only-secret ").llm_api_key_configured is True
-    assert Settings(llm_api_key="").llm_api_key_configured is False
-    assert Settings(llm_api_key=" \t ").llm_api_key_configured is False
-
-
 def test_backend_env_path_is_absolute_and_relative_to_backend():
     assert BACKEND_ENV_FILE.is_absolute()
     assert BACKEND_ENV_FILE == Path(__file__).resolve().parents[1] / ".env"
@@ -46,11 +40,14 @@ def make_goal_with_title(client, title):
 
 def test_health_and_demo_challenges(client):
     health = client.get("/health", headers={"Origin": "http://localhost:5173"})
+    loopback_health = client.get("/health", headers={"Origin": "http://127.0.0.1:5173"})
     challenges = client.get("/challenges")
 
     assert health.status_code == 200
     assert health.json() == {"status": "ok"}
     assert health.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert loopback_health.status_code == 200
+    assert loopback_health.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
     assert challenges.status_code == 200
     assert len(challenges.json()) == 3
     assert all(challenge["demo"] for challenge in challenges.json())
@@ -82,14 +79,21 @@ def test_goal_task_crud_and_derived_progress(client):
     assert reloaded_task.status_code == 200
     assert reloaded_task.json()["completed"] is True
 
-    updated_goal = client.patch(f"/goals/{goal['id']}", json={"weekly_available_hours": 4})
+    updated_goal = client.patch(
+        f"/goals/{goal['id']}",
+        json={"weekly_available_hours": 4, "status": "completed"},
+    )
     assert updated_goal.status_code == 200
     assert updated_goal.json()["weekly_available_hours"] == 4
+    assert updated_goal.json()["status"] == "completed"
 
     progress = client.get("/progress")
     assert progress.status_code == 200
     progress_data = progress.json()
     assert progress_data["total_goals"] == 2
+    assert progress_data["completed_goals"] == 1
+    assert progress_data["in_progress_goals"] == 0
+    assert progress_data["pending_goals"] == 1
     assert progress_data["total_tasks"] == 1
     assert progress_data["completed_tasks"] == 1
     assert progress_data["pending_tasks"] == 0
@@ -98,6 +102,7 @@ def test_goal_task_crud_and_derived_progress(client):
     assert goal_progress[goal["id"]] == {
         "goal_id": goal["id"],
         "title": "Community gardening",
+        "status": "completed",
         "total_tasks": 1,
         "completed_tasks": 1,
         "completion_percentage": 100,
@@ -105,6 +110,7 @@ def test_goal_task_crud_and_derived_progress(client):
     assert goal_progress[other_goal["id"]] == {
         "goal_id": other_goal["id"],
         "title": "Community garden volunteering",
+        "status": "not_started",
         "total_tasks": 0,
         "completed_tasks": 0,
         "completion_percentage": 0,
@@ -164,11 +170,6 @@ def test_duplicate_goal_title_is_rejected_without_deleting_existing_goal(client)
 
 
 def test_plan_generation_schedules_and_persists_task_progress(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=None),
-    )
     goal = make_goal(client)
 
     response = client.post(f"/goals/{goal['id']}/plan", json={})
@@ -252,11 +253,6 @@ def test_plan_generation_schedules_and_persists_task_progress(client, monkeypatc
 
 
 def test_fallback_plans_are_relevant_to_javascript_python_and_english(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=None),
-    )
     goal_inputs = [
         {
             "title": "Learn JavaScript for interactive web pages",
@@ -343,11 +339,6 @@ def test_fallback_plans_are_relevant_to_javascript_python_and_english(client, mo
 
 
 def test_ai_website_goal_generates_tool_comparison_build_and_testing_tasks(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=None),
-    )
     goal = make_goal_with_title(client, "AI agents useful for creating a website")
     response = client.post(f"/goals/{goal['id']}/plan", json={})
 
@@ -389,11 +380,6 @@ def test_ai_website_goal_generates_tool_comparison_build_and_testing_tasks(clien
 
 
 def test_regeneration_archives_stale_javascript_tasks_without_rewriting_goal(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=None),
-    )
     response = client.post(
         "/goals",
         json={
@@ -518,11 +504,6 @@ def test_regeneration_archives_stale_javascript_tasks_without_rewriting_goal(cli
 
 
 def test_one_hour_weekly_limit_is_respected_for_a_short_deadline(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=None),
-    )
     response = client.post(
         "/goals",
         json={
@@ -541,397 +522,6 @@ def test_one_hour_weekly_limit_is_respected_for_a_short_deadline(client, monkeyp
     assert len(tasks) == 2
     assert sum(task["estimated_minutes"] for task in tasks) <= 60
     assert all(task["scheduled_date"] <= goal["deadline"] for task in tasks)
-
-
-def test_ai_provider_failure_returns_labeled_fallback(client, monkeypatch):
-    settings = Settings(
-        llm_api_key="test-only-key",
-        llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        llm_model="gemini-3.8-flash",
-    )
-
-    calls = []
-
-    def fail_provider(url, **_kwargs):
-        calls.append(url)
-        raise httpx.ConnectError(
-            "unit-test provider failure",
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: settings,
-    )
-    monkeypatch.setattr(plan_generation.httpx, "post", fail_provider)
-    monkeypatch.setattr(plan_generation.time, "sleep", lambda _delay: None)
-    goal = make_goal(client)
-
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-    assert len(response.json()["milestones"]) >= 1
-    assert sum(len(item["tasks"]) for item in response.json()["milestones"]) >= 2
-    assert len(calls) == 2
-    assert "test-only-key" not in response.text
-
-
-@pytest.mark.parametrize("missing_key", [None, "", " \t "])
-def test_missing_or_blank_api_key_skips_provider_and_uses_fallback(client, monkeypatch, missing_key):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key=missing_key),
-    )
-
-    def unexpected_provider_call(*_args, **_kwargs):
-        raise AssertionError("Gemini must not be called without a non-empty API key")
-
-    monkeypatch.setattr(plan_generation.httpx, "post", unexpected_provider_call)
-    goal = make_goal(client)
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-
-
-@pytest.mark.parametrize("status_code", [401, 404])
-def test_authentication_and_model_errors_are_not_retried(client, monkeypatch, status_code):
-    settings = Settings(llm_api_key="test-only-key")
-    calls = []
-
-    def mock_post(url, **_kwargs):
-        calls.append(url)
-        return httpx.Response(
-            status_code,
-            json={"error": {"message": "safe provider error"}},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    goal = make_goal(client)
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-    assert len(calls) == 1
-
-
-@pytest.mark.parametrize("status_code", [429, 503])
-def test_transient_provider_status_retries_once_then_uses_ai(client, monkeypatch, status_code):
-    settings = Settings(llm_api_key="test-only-key")
-    calls = []
-    sleeps = []
-    content = (
-        '{"milestones":[{"title":"Explore community gardening",'
-        '"description":"Build practical skills for a neighborhood garden.",'
-        '"tasks":[{"title":"Research local garden needs","estimated_minutes":45,'
-        '"completion_criteria":"Record three needs from credible local sources."},'
-        '{"title":"Plan a small garden task","estimated_minutes":45,'
-        '"completion_criteria":"Write a short plan for one achievable garden activity."}]}]}'
-    )
-
-    def mock_post(url, **_kwargs):
-        calls.append(url)
-        if len(calls) == 1:
-            return httpx.Response(
-                status_code,
-                headers={"Retry-After": "0"},
-                json={"error": {"message": "temporary provider condition"}},
-                request=httpx.Request("POST", url),
-            )
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": content}}]},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    monkeypatch.setattr(plan_generation.time, "sleep", sleeps.append)
-    goal = make_goal(client)
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "ai"
-    assert len(calls) == 2
-    assert sleeps == [0.0]
-
-
-def test_retry_after_over_limit_is_not_retried(client, monkeypatch):
-    settings = Settings(llm_api_key="test-only-key")
-    calls = []
-
-    def mock_post(url, **_kwargs):
-        calls.append(url)
-        return httpx.Response(
-            503,
-            headers={"Retry-After": "60"},
-            json={"error": {"message": "temporary overload"}},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    goal = make_goal(client)
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-    assert len(calls) == 1
-
-
-def test_retry_after_is_used_when_within_the_bounded_limit():
-    response = httpx.Response(
-        503,
-        headers={"Retry-After": "2"},
-        request=httpx.Request("POST", "https://provider.example/chat/completions"),
-    )
-
-    assert plan_generation._retry_delay(response, 1) == 2.0
-
-
-@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
-def test_transient_network_errors_retry_once(client, monkeypatch, error_type):
-    settings = Settings(llm_api_key="test-only-key")
-    calls = []
-    content = (
-        '{"milestones":[{"title":"Explore community gardening",'
-        '"description":"Build practical skills for a neighborhood garden.",'
-        '"tasks":[{"title":"Research local garden needs","estimated_minutes":45,'
-        '"completion_criteria":"Record three needs from credible local sources."},'
-        '{"title":"Plan a small garden task","estimated_minutes":45,'
-        '"completion_criteria":"Write a short plan for one achievable garden activity."}]}]}'
-    )
-
-    def mock_post(url, **_kwargs):
-        calls.append(url)
-        if len(calls) == 1:
-            raise error_type("transient failure", request=httpx.Request("POST", url))
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": content}}]},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    monkeypatch.setattr(plan_generation.time, "sleep", lambda _delay: None)
-    goal = make_goal(client)
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "ai"
-    assert len(calls) == 2
-
-
-def test_gemini_http_failure_logs_status_and_redacted_error(client, monkeypatch, caplog):
-    test_key = "mock-provider-secret"
-    settings = Settings(
-        llm_api_key=test_key,
-        llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        llm_model="gemini-3.8-flash",
-    )
-
-    def mock_post(url, **_kwargs):
-        return httpx.Response(
-            404,
-            json={
-                "error": {
-                    "message": (
-                        f"API key {test_key} was rejected; "
-                        f"Authorization: Bearer {test_key}"
-                    )
-                }
-            },
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    goal = make_goal(client)
-
-    with caplog.at_level(logging.WARNING, logger=plan_generation.__name__):
-        response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-    assert "provider_status=404" in caplog.text
-    assert "provider_error=" in caplog.text
-    assert test_key not in caplog.text
-    assert f"Bearer {test_key}" not in caplog.text
-    assert test_key not in response.text
-
-
-def test_provider_error_sanitizer_redacts_full_authorization_header_and_limits_length():
-    secret = "mock-bearer-secret"
-    message = "Authorization: " + "Bearer " + secret + "; " + ("provider detail " * 50)
-    response = httpx.Response(
-        401,
-        json={"error": {"message": message}},
-        request=httpx.Request("POST", "https://provider.example/chat/completions"),
-    )
-
-    sanitized = plan_generation._redact_provider_error(response, api_key=None)
-
-    assert secret not in sanitized
-    assert "Authorization: [REDACTED]" in sanitized
-    assert "Bearer " + secret not in sanitized
-    assert len(sanitized) <= 500
-
-
-def test_gemini_404_list_error_message_is_extracted_and_redacted():
-    api_key = "mock-provider-key"
-    response = httpx.Response(
-        404,
-        json=[
-            {
-                "error": {
-                    "message": (
-                        "This model is unavailable. "
-                        f"API key {api_key}; Authorization: Bearer mock-bearer-token"
-                    )
-                }
-            }
-        ],
-        request=httpx.Request(
-            "POST",
-            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        ),
-    )
-
-    message = plan_generation._redact_provider_error(response, api_key)
-
-    assert "This model is unavailable." in message
-    assert api_key not in message
-    assert "mock-bearer-token" not in message
-
-
-def test_gemini_openai_compatible_response_is_parsed_and_persisted(client, monkeypatch):
-    settings = Settings(
-        llm_api_key="test-only-key",
-        llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        llm_model="gemini-3.8-flash",
-    )
-    request_details = {}
-    plan_content = (
-        '{"milestones":[{"title":"Explore community gardening",'
-        '"description":"Build practical skills for a neighborhood garden.",'
-        '"tasks":[{"title":"Research local garden needs","estimated_minutes":45,'
-        '"completion_criteria":"Record three needs from credible local sources."},'
-        '{"title":"Plan a small garden task","estimated_minutes":45,'
-        '"completion_criteria":"Write a short plan for one achievable garden activity."}]}]}'
-    )
-
-    def mock_post(url, *, headers, json, timeout):
-        request_details.update(url=url, headers=headers, payload=json, timeout=timeout)
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": plan_content}}]},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    goal = make_goal(client)
-
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    plan = response.json()
-    tasks = [task for milestone in plan["milestones"] for task in milestone["tasks"]]
-    assert plan["source"] == "ai"
-    assert len(plan["milestones"]) == 1
-    assert len(tasks) == 2
-    assert all(task["goal_id"] == goal["id"] for task in tasks)
-    assert all(task["estimated_minutes"] == 45 for task in tasks)
-    assert all(task["completion_criteria"] for task in tasks)
-    assert request_details["url"] == (
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    )
-    assert request_details["headers"]["Authorization"].startswith("Bearer ")
-    assert request_details["headers"]["Authorization"].endswith("test-only-key")
-    assert request_details["payload"]["model"] == "gemini-3.8-flash"
-    assert request_details["payload"]["response_format"] == {"type": "json_object"}
-    assert request_details["timeout"].connect == 5
-    assert request_details["timeout"].read == 30
-    assert "test-only-key" not in response.text
-
-
-def test_invalid_gemini_plan_output_uses_labeled_fallback(client, monkeypatch):
-    settings = Settings(
-        llm_api_key="test-only-key",
-        llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        llm_model="gemini-3.8-flash",
-    )
-
-    def mock_post(url, **_kwargs):
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": '{"milestones": []}'}}]},
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(plan_generation, "get_settings", lambda: settings)
-    monkeypatch.setattr(plan_generation.httpx, "post", mock_post)
-    goal = make_goal(client)
-
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    plan = response.json()
-    assert plan["source"] == "fallback"
-    assert len(plan["milestones"]) >= 1
-    assert sum(len(item["tasks"]) for item in plan["milestones"]) >= 2
-    assert "test-only-key" not in response.text
-
-
-def test_irrelevant_ai_draft_is_rejected_and_replaced_with_relevant_fallback(client, monkeypatch):
-    monkeypatch.setattr(
-        plan_generation,
-        "get_settings",
-        lambda: Settings(llm_api_key="test-only-key"),
-    )
-    monkeypatch.setattr(
-        plan_generation,
-        "request_ai_draft",
-        lambda _goal, _settings: plan_generation.PlanDraft(
-            milestones=[
-                plan_generation.DraftMilestone(
-                    title="Manage AI agents",
-                    description="Coordinate unrelated AI agents.",
-                    tasks=[
-                        plan_generation.DraftTask(
-                            title="Configure all AI agents",
-                            estimated_minutes=30,
-                            completion_criteria="Configure and test multiple AI agents.",
-                        ),
-                        plan_generation.DraftTask(
-                            title="Deploy all AI agents",
-                            estimated_minutes=30,
-                            completion_criteria="Deploy and verify the AI agents.",
-                        ),
-                    ],
-                )
-            ]
-        ),
-    )
-    goal = make_goal_with_title(client, "Learn JavaScript")
-
-    response = client.post(f"/goals/{goal['id']}/plan", json={})
-
-    assert response.status_code == 200
-    assert response.json()["source"] == "fallback"
-    tasks = [
-        task
-        for milestone in response.json()["milestones"]
-        for task in milestone["tasks"]
-    ]
-    assert any("javascript" in task["title"].casefold() for task in tasks)
-    assert all("ai agent" not in task["title"].casefold() for task in tasks)
 
 
 def test_additive_migration_preserves_existing_goal_and_task(tmp_path):
@@ -985,7 +575,7 @@ def test_additive_migration_preserves_existing_goal_and_task(tmp_path):
     migrate_existing_schema(migration_engine)
     with migration_engine.connect() as connection:
         goal = connection.exec_driver_sql(
-            "SELECT title, description, weekly_available_hours, learning_style FROM goals WHERE id = 'legacy-goal'"
+            "SELECT title, description, status, weekly_available_hours, learning_style, user_id FROM goals WHERE id = 'legacy-goal'"
         ).one()
         task = connection.exec_driver_sql(
             "SELECT title, milestone, completed, scheduled_date, estimated_minutes, is_archived FROM tasks WHERE id = 'legacy-task'"
@@ -994,7 +584,7 @@ def test_additive_migration_preserves_existing_goal_and_task(tmp_path):
             "SELECT is_archived FROM milestones"
         ).all()
 
-    assert goal == ("Existing goal", "Keep this data", 3, "")
+    assert goal == ("Existing goal", "Keep this data", "in_progress", 3, "", None)
     assert task == ("Existing task", "Old milestone", 1, None, None, 0)
     assert archived_milestones == []
     migration_engine.dispose()

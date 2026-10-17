@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from app.auth import get_current_user, get_owned_goal
 from app.database import get_db
 from app.models import Goal, Milestone, Task, utc_now
+from app.models import User
 from app.schemas import (
     GoalCreate,
     GoalPlanRead,
@@ -19,17 +21,26 @@ router = APIRouter(prefix="/goals", tags=["goals"])
 
 
 @router.post("", response_model=GoalRead, status_code=status.HTTP_201_CREATED)
-def create_goal(payload: GoalCreate, db: Session = Depends(get_db)) -> Goal:
+def create_goal(
+    payload: GoalCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Goal:
     normalized_title = payload.title.lower()
     duplicate = db.scalar(
-        select(Goal.id).where(func.lower(func.trim(Goal.title)) == normalized_title).limit(1)
+        select(Goal.id)
+        .where(
+            Goal.user_id == user.id,
+            func.lower(func.trim(Goal.title)) == normalized_title,
+        )
+        .limit(1)
     )
     if duplicate is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A goal with this title already exists. Open the existing goal instead.",
         )
-    goal = Goal(**payload.model_dump())
+    goal = Goal(user_id=user.id, **payload.model_dump())
     db.add(goal)
     db.commit()
     db.refresh(goal)
@@ -93,10 +104,12 @@ def read_goal_plan(goal: Goal, db: Session) -> GoalPlanRead:
 
 
 @router.get("/{goal_id}/plan", response_model=GoalPlanRead)
-def get_goal_plan(goal_id: str, db: Session = Depends(get_db)) -> GoalPlanRead:
-    goal = db.get(Goal, goal_id)
-    if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+def get_goal_plan(
+    goal_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> GoalPlanRead:
+    goal = get_owned_goal(goal_id, user, db)
     return read_goal_plan(goal, db)
 
 
@@ -105,10 +118,9 @@ def generate_goal_plan(
     goal_id: str,
     payload: PlanGenerateRequest,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> GoalPlanRead:
-    goal = db.get(Goal, goal_id)
-    if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    goal = get_owned_goal(goal_id, user, db)
 
     has_existing_tasks = db.scalar(
         select(Task.id).where(Task.goal_id == goal_id).limit(1)
@@ -241,23 +253,36 @@ def generate_goal_plan(
     db.refresh(goal)
     return read_goal_plan(goal, db)
 @router.get("", response_model=list[GoalRead])
-def list_goals(db: Session = Depends(get_db)) -> list[Goal]:
-    return list(db.scalars(select(Goal).order_by(Goal.created_at.desc())).all())
+def list_goals(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[Goal]:
+    return list(
+        db.scalars(
+            select(Goal)
+            .where(Goal.user_id == user.id)
+            .order_by(Goal.created_at.desc())
+        ).all()
+    )
 
 
 @router.get("/{goal_id}", response_model=GoalRead)
-def get_goal(goal_id: str, db: Session = Depends(get_db)) -> Goal:
-    goal = db.get(Goal, goal_id)
-    if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
-    return goal
+def get_goal(
+    goal_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Goal:
+    return get_owned_goal(goal_id, user, db)
 
 
 @router.patch("/{goal_id}", response_model=GoalRead)
-def update_goal(goal_id: str, payload: GoalUpdate, db: Session = Depends(get_db)) -> Goal:
-    goal = db.get(Goal, goal_id)
-    if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+def update_goal(
+    goal_id: str,
+    payload: GoalUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Goal:
+    goal = get_owned_goal(goal_id, user, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(goal, field, value)
     db.commit()
@@ -266,10 +291,12 @@ def update_goal(goal_id: str, payload: GoalUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_goal(goal_id: str, db: Session = Depends(get_db)) -> Response:
-    goal = db.get(Goal, goal_id)
-    if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+def delete_goal(
+    goal_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    goal = get_owned_goal(goal_id, user, db)
     db.delete(goal)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

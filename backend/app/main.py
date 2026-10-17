@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import create_db_and_tables
-from app.routes import challenges, contributions, goals, progress, tasks
+from app.routes import auth, challenges, contributions, goals, progress, tasks
 
 
 @asynccontextmanager
@@ -21,7 +22,7 @@ app = FastAPI(
     title="Skills to Impact API",
     description=(
         "Local development API for persisted goals, generated action plans, tasks, "
-        "contributions, and progress. Authentication is not implemented."
+        "contributions, and per-account progress with cookie-based authentication."
     ),
     version="0.1.0",
     lifespan=lifespan,
@@ -35,6 +36,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def validate_request_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and origin is not None
+        and origin not in settings.allowed_origins
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Untrusted request origin"},
+        )
+    return await call_next(request)
+
+
+app.include_router(auth.router)
 app.include_router(goals.router)
 app.include_router(tasks.router)
 app.include_router(challenges.router)

@@ -11,8 +11,9 @@ const navigation = [
   { label: 'Progress', path: '/progress', icon: 'chart' },
 ]
 
-export function AppShell({ activePath, title, onNavigate, children }) {
+export function AppShell({ activePath, title, onNavigate, user, onLogout, children }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
 
   useEffect(() => {
     if (!isMenuOpen) return undefined
@@ -27,6 +28,17 @@ export function AppShell({ activePath, title, onNavigate, children }) {
     setIsMenuOpen(false)
     onNavigate(path)
   }
+
+  async function logout() {
+    setLogoutError('')
+    try {
+      await onLogout()
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Could not log out. Please try again.')
+    }
+  }
+
+  const initials = user.full_name.trim().charAt(0).toUpperCase()
 
   return (
     <div className="app-layout">
@@ -56,9 +68,9 @@ export function AppShell({ activePath, title, onNavigate, children }) {
           <button className="text-link" onClick={() => navigate('/')}>About the platform <Icon name="arrow" size={14} /></button>
         </div>
         <div className="profile">
-          <div className="avatar">Y</div>
-          <div><div className="profile-name">Your workspace</div><div className="profile-caption">Personal account</div></div>
-          <span className="online-dot" aria-label="Active" />
+          <div className="avatar">{initials}</div>
+          <div className="profile-details"><div className="profile-name">{user.full_name}</div><div className="profile-caption">{user.email}</div></div>
+          <button className="text-link logout-button" onClick={logout}>Log out</button>
         </div>
       </aside>
       <main className="main-content">
@@ -74,9 +86,10 @@ export function AppShell({ activePath, title, onNavigate, children }) {
             </button>
             <div className="breadcrumb"><span>ASCEND</span><span className="breadcrumb-slash">/</span><strong>{title}</strong></div>
           </div>
-          <div className="topbar-right"><span className="today-label">YOUR GROWTH WORKSPACE</span><span className="avatar avatar-small">Y</span></div>
+          <div className="topbar-right"><span className="today-label">YOUR GROWTH WORKSPACE</span><span className="avatar avatar-small">{initials}</span></div>
         </header>
         <div className="page-content">{children}</div>
+        {logoutError && <div className="api-feedback api-feedback-error logout-feedback" role="alert">{logoutError}</div>}
         <footer className="app-footer"><span>Turn Goals Into Growth.</span><span>ASCEND <span className="footer-dot">·</span> Goals, plans, and progress are saved in your backend database</span></footer>
       </main>
     </div>

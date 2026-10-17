@@ -55,6 +55,8 @@ def create_db_and_tables() -> None:
 def migrate_existing_schema(target_engine: Engine) -> None:
     additions = {
         "goals": {
+            "user_id": (String(36), " REFERENCES users(id) ON DELETE SET NULL"),
+            "status": (String(20), " NOT NULL DEFAULT 'in_progress'"),
             "learning_style": (String(120), " NOT NULL DEFAULT ''"),
             "learning_constraints": (Text(), " NOT NULL DEFAULT ''"),
             "plan_source": (String(20), ""),
@@ -72,6 +74,9 @@ def migrate_existing_schema(target_engine: Engine) -> None:
         },
         "milestones": {
             "is_archived": (Boolean(), " NOT NULL DEFAULT FALSE"),
+        },
+        "contributions": {
+            "user_id": (String(36), " REFERENCES users(id) ON DELETE SET NULL"),
         },
     }
     inspector = inspect(target_engine)
